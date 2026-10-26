@@ -16,6 +16,7 @@
 //   dis_avb uboot <sml_or_teecfg> <uboot.bin> <out>   # for_uboot 版本(带 patch_code)
 
 #include <cstdint>
+#include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
