@@ -73,6 +73,51 @@ dis_avb.exe dis_avb sml_or_teecfg.bin tos.bin tos-noavb-bsp-bypassed
 
 exe 由 `dis_avb.cpp` 用 mingw-w64 交叉编译，无运行库依赖（静态链接），双击/命令行均可。
 
+## 如何选择签名载体：sml 还是 teecfg？
+
+`dis_avb` 的第一个参数（上游叫 `sml_or_teecfg`）是**签名载体**——一个从设备上 dump 下来的、原厂签名且未修改过的合法镜像。它的作用不是"签名"你的新镜像，而是**提供一个被 SPL/FDL1 认可的原厂签名结构和 cert**，让 pre-verification 认为这不是伪造文件。
+
+> 原理（kasnria001 POC）：Unisoc 在 SPL/FDL1 阶段**不校验镜像头**，校验逻辑**只用 cert header 里的 payload offset / payload size** 定位并检查 payload，并不把 payload 内容与签名做强绑定。`bsp_sign_fxxker` 输出 = 载体头部 + 修改后镜像 + 载体签名段，并把 cert 的 offset 平移，从而让修改后的镜像"借用"原厂签名结构。
+
+### 选择标准
+
+| 场景 | 签名载体（参数 1） | 说明 |
+|---|---|---|
+| patch **trustos**（TOS，AVB 检测所在） | sml **或** teecfg 都行 | 上游原话 `dis_avb_ex sml_or_teecfg tos`，两者等价 |
+| patch **teecfg** | sml | teecfg 本身是 BSP 校验对象，载体须用 sml |
+| patch **uboot**（`for_uboot` 版） | sml / teecfg | `bsp_sign_fxxker_for_uboot sml_teecfg uboot savefile` |
+
+优先级建议（都有时按此顺序试）：
+
+1. `sml_a` / `sml`（Secure Monitor Loader，EL3 监控器，加载最早、最通用的载体，kasnria001 的 POC 也是用它）
+2. `teecfg_a` / `teecfg`（TEE 配置镜像，某些设备没有独立 sml 分区时用它）
+
+### 怎么判断你手上这个文件能不能当载体
+
+```bash
+# 1. 从设备 dump 分区（或用已有备份），找到原厂未修改的 sml/teecfg
+# 2. 检查结构是否合法：
+file_off=$(printf '\x30' | od -An -tu4 -N4) # 或用 python:
+python3 - <<'EOF'
+import struct
+for p in ['sml_a.bin', 'teecfg_a.bin']:
+    d = open(p, 'rb').read(0x40)
+    if len(d) < 0x34:
+        print(p, 'too small'); continue
+    magic, mimg = struct.unpack_from('<II', d, 0x00)
+    print(p, 'magic=%08x mImgSize=%#x ->' % (magic, mimg),
+          'OK 可用作载体' if magic == 0x42544844 and mimg else '无效')
+EOF
+```
+
+必要条件：
+- **magic = `0x42544844`（"BTHD" LE）**，`mImgSize`（偏移 0x30）非零
+- **从设备 dump、未做任何修改**（原厂签名段 / cert 必须原样）
+- 文件尾部能解析出 `sprdsignedimageheader`（cert_size/cert_offset 非零，`chsize` 能算出正确大小）
+- 必须是设备**存在且被 SPL 校验链认可**的分区镜像；没有对应分区或版本不匹配则换另一个试
+
+> ⚠️ 载体只负责"通过结构检查"；如果你的目的是禁用 AVB（`dis_avb`），修改目标是 **trustos**、签名载体任选 sml/teecfg；如果还要改 uboot，用 `uboot` 子命令（含 `patch_code`）。
+
 ---
 
 ## 验证
