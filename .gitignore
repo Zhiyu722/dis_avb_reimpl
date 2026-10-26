@@ -1,0 +1,7 @@
+*.o
+*.obj
+dis_avb
+temp
+ref/
+tests/*.bin
+tests/*.log
