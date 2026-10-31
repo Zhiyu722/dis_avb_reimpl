@@ -49,6 +49,9 @@ verify.sh      三套实现对照验证脚本（需 gcc/g++）
 # 完整 dis_avb 流程: 等价于 spd_dump_it 里的 "dis_avb_ex sml_or_teecfg tos"
 python3 dis_avb.py dis_avb <sml_or_teecfg.bin> <tos.bin> [输出文件]
 
+# 查看帮助
+python3 dis_avb.py -h
+
 # 只有 1 个候选点时强制 patch（默认要求 >=2 个）
 python3 dis_avb.py dis_avb --force-single <sml_or_teecfg.bin> <tos.bin> [输出文件]
 
@@ -69,6 +72,7 @@ python3 dis_avb.py fxxker <签名载体> <修改后> <out> # ③ 签名包装
 
 ```bash
 g++ -O2 -std=c++17 -o dis_avb dis_avb.cpp
+./dis_avb -h
 ./dis_avb dis_avb <sml_or_teecfg.bin> <tos.bin> [输出文件]
 ./dis_avb dis_avb --force-single <sml_or_teecfg.bin> <tos.bin> [输出文件]
 ./dis_avb dis_avb --force-single --pad-to-input <sml_or_teecfg.bin> <tos.bin> [输出文件]
@@ -80,6 +84,7 @@ g++ -O2 -std=c++17 -o dis_avb dis_avb.cpp
 ```bat
 dis_avb.exe dis_avb sml_or_teecfg.bin tos.bin tos-noavb-bsp-bypassed
 dis_avb.exe dis_avb --force-single sml_or_teecfg.bin tos.bin tos-noavb-bsp-bypassed
+dis_avb.exe -h
 ```
 
 exe 由 `dis_avb.cpp` 用 mingw-w64 交叉编译，无运行库依赖（静态链接），双击/命令行均可。

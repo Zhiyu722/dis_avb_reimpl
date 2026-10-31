@@ -365,22 +365,32 @@ def patch_code_uboot(mem):
 # ---------------------------------------------------------------------------
 # 命令行
 # ---------------------------------------------------------------------------
+def print_usage(stream=None):
+    import sys as _sys
+    stream = stream or _sys.stdout
+    print(__doc__, file=stream)
+    print('用法:', file=stream)
+    print('  dis_avb.py gen_tos [--force-single] <tos.bin> [out.bin]  # gen_tos 算法 -> tos-noavb.bin', file=stream)
+    print('  dis_avb.py chsize <file.bin>                  # 截断 DHTB 到真实大小（原地）', file=stream)
+    print('  dis_avb.py fxxker <signed.bin> <mod.bin> <out> # bsp_sign_fxxker 包装', file=stream)
+    print('  dis_avb.py dis_avb [选项] <sml_or_teecfg> <tos.bin> [out] # 完整 dis_avb 流程', file=stream)
+    print('', file=stream)
+    print('  --force-single  只找到 1 个候选点时仍强制 patch（默认要求 >=2 个）', file=stream)
+    print('  --pad-to <size> 输出用 0x00 补齐到指定大小（支持 0x 前缀）', file=stream)
+    print('  --pad-to-input  输出补齐到原始 tos.bin 的大小（分区全量镜像用）', file=stream)
+    print('  -h, --help, -help  显示这份帮助', file=stream)
+
+
 def main():
     import os
     import tempfile
 
     if len(sys.argv) < 2:
-        print(__doc__)
-        print('用法:')
-        print('  dis_avb.py gen_tos [--force-single] <tos.bin> [out.bin]  # gen_tos 算法 -> tos-noavb.bin')
-        print('  dis_avb.py chsize <file.bin>                  # 截断 DHTB 到真实大小（原地）')
-        print('  dis_avb.py fxxker <signed.bin> <mod.bin> <out> # bsp_sign_fxxker 包装')
-        print('  dis_avb.py dis_avb [选项] <sml_or_teecfg> <tos.bin> [out] # 完整 dis_avb 流程')
-        print('')
-        print('  --force-single  只找到 1 个候选点时仍强制 patch（默认要求 >=2 个）')
-        print('  --pad-to <size> 输出用 0x00 补齐到指定大小（支持 0x 前缀）')
-        print('  --pad-to-input  输出补齐到原始 tos.bin 的大小（分区全量镜像用）')
+        print_usage()
         return 1
+    if sys.argv[1] in ('-h', '--help', '-help', 'help'):
+        print_usage()
+        return 0
 
     cmd = sys.argv[1]
 

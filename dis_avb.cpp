@@ -390,23 +390,34 @@ done:
 // ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
+static void print_usage(FILE *f)
+{
+    fprintf(f,
+        "usage:\n"
+        "  dis_avb gen_tos [--force-single] <tos.bin> [out.bin]            # gen_tos 算法 -> tos-noavb\n"
+        "  dis_avb chsize <file.bin>                                       # 原地截断 DHTB(需要写 temp)\n"
+        "  dis_avb fxxker <signed.bin> <mod.bin> <out>                     # bsp_sign_fxxker 包装\n"
+        "  dis_avb dis_avb [--force-single] [--pad-to N|--pad-to-input] <sml_or_teecfg> <tos.bin> [out] # 完整 dis_avb 流程\n"
+        "  dis_avb uboot <sml_or_teecfg> <uboot.bin> <out>                 # for_uboot 版本(含 patch_code)\n"
+        "\n"
+        "  --force-single  只找到 1 个候选点时仍强制 patch(默认要求 >=2 个)\n"
+        "  --pad-to <size>      输出用 0x00 补齐到指定大小(可用 0x 前缀)\n"
+        "  --pad-to-input       输出补齐到原始 tos.bin 的大小(分区全量镜像用)\n"
+        "\n"
+        "  -h, --help, -help    显示这份帮助\n");
+}
+
 int main(int argc, char **argv)
 {
     if (argc < 2) {
-        fprintf(stderr,
-            "usage:\n"
-            "  dis_avb gen_tos [--force-single] <tos.bin> [out.bin]            # gen_tos 算法 -> tos-noavb\n"
-            "  dis_avb chsize <file.bin>                                       # 原地截断 DHTB(需要写 temp)\n"
-            "  dis_avb fxxker <signed.bin> <mod.bin> <out>                     # bsp_sign_fxxker 包装\n"
-            "  dis_avb dis_avb [--force-single] <sml_or_teecfg> <tos.bin> [out] # 完整 dis_avb 流程\n"
-            "  dis_avb uboot <sml_or_teecfg> <uboot.bin> <out>                 # for_uboot 版本(含 patch_code)\n"
-            "\n"
-            "  --force-single  只找到 1 个候选点时仍强制 patch(默认要求 >=2 个)\n"
-            "  --pad-to <size>      输出用 0x00 补齐到指定大小(可用 0x 前缀)\n"
-            "  --pad-to-input       输出补齐到原始 tos.bin 的大小(分区全量镜像用)\n");
+        print_usage(stderr);
         return 1;
     }
     std::string cmd = argv[1];
+    if (cmd == "-h" || cmd == "--help" || cmd == "-help" || cmd == "help") {
+        print_usage(stdout);
+        return 0;
+    }
 
     if (cmd == "gen_tos") {
         int a = 2;
