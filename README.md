@@ -49,19 +49,23 @@ verify.sh      三套实现对照验证脚本（需 gcc/g++）
 # 完整 dis_avb 流程: 等价于 spd_dump_it 里的 "dis_avb_ex sml_or_teecfg tos"
 python3 dis_avb.py dis_avb <sml_or_teecfg.bin> <tos.bin> [输出文件]
 
+# 只有 1 个候选点时强制 patch（默认要求 >=2 个）
+python3 dis_avb.py dis_avb --force-single <sml_or_teecfg.bin> <tos.bin> [输出文件]
+
 # 单独步骤
-python3 dis_avb.py gen_tos <tos.bin> [输出]      # ① → tos-noavb.bin
+python3 dis_avb.py gen_tos [--force-single] <tos.bin> [输出] # ① → tos-noavb.bin
 python3 dis_avb.py chsize <文件.bin>              # ② 截断(原地)
 python3 dis_avb.py fxxker <签名载体> <修改后> <out> # ③ 签名包装
 ```
 
-默认输出 `tos-noavb-bsp-bypassed`。
+默认输出 `tos-noavb-bsp-bypassed`。`gen_tos` 找不到补丁点时不会写出文件（与原版一致）。
 
 ## C++ 版
 
 ```bash
 g++ -O2 -std=c++17 -o dis_avb dis_avb.cpp
 ./dis_avb dis_avb <sml_or_teecfg.bin> <tos.bin> [输出文件]
+./dis_avb dis_avb --force-single <sml_or_teecfg.bin> <tos.bin> [输出文件]
 # 子命令与 Python 一致: gen_tos / chsize / fxxker / dis_avb / uboot
 ```
 
@@ -69,6 +73,7 @@ g++ -O2 -std=c++17 -o dis_avb dis_avb.cpp
 
 ```bat
 dis_avb.exe dis_avb sml_or_teecfg.bin tos.bin tos-noavb-bsp-bypassed
+dis_avb.exe dis_avb --force-single sml_or_teecfg.bin tos.bin tos-noavb-bsp-bypassed
 ```
 
 exe 由 `dis_avb.cpp` 用 mingw-w64 交叉编译，无运行库依赖（静态链接），双击/命令行均可。
@@ -132,5 +137,6 @@ fxxker:  py == ref OK / cpp == ref OK   (chsize 截断 0x3a0)
 ## 与上游的差异（有意的）
 
 - 上游 `gen_tos-noavb.c` 会**就地截断覆盖输入文件**；本实现默认不改动输入，输出到新文件。
+- 上游要求 `mov_count >= 2` 才选点；本实现默认保持一致，另提供 `--force-single`：仅当恰好命中 1 个候选点时强制 patch 该点（打印 `warning`），适用于只含一个校验函数的 trustos。
 - `chsize_update_sha256` 的 SHA256 重算：Python 用 `hashlib.sha256`（等效）。
 - C++ 中 `loadfile` 的 extra 填充语义以上游为准做了近似（零填充 vs 未初始化堆数据），对 16 对齐的真实镜像无影响。

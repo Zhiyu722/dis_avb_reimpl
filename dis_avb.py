@@ -154,7 +154,7 @@ def chsize_update_sha256(buf):
 # gen_tos_noavb：对 trustos 的 mov patch（对应 gen_tos-noavb.c）
 # 输入 DHTB 镜像字节，返回 (截断后字节, patch 位置列表, 选择的 patch 偏移)
 # ---------------------------------------------------------------------------
-def gen_tos_noavb(data):
+def gen_tos_noavb(data, force_single=False):
     if u32(data, 0) != MAGIC_DHTB:
         raise SystemExit('The file is not sprd trusted firmware')
     img_size = u32(data, 0x30)
@@ -213,6 +213,11 @@ def gen_tos_noavb(data):
         i += 4
 
     if mov_count < 2:
+        if force_single and mov_count == 1:
+            print('warning: only 1 candidate detected, forcing patch')
+            print('patch mov at 0x%x' % pmov[0])
+            struct.pack_into('<I', data, pmov[0], MOV_W0_0)
+            return data, pmov[:1], pmov[0]
         print('dis_avb: skip saving!!!')
         return data, pmov[:mov_count], None
     if mov_count > 2:
@@ -367,18 +372,29 @@ def main():
     if len(sys.argv) < 2:
         print(__doc__)
         print('用法:')
-        print('  dis_avb.py gen_tos <tos.bin> [out.bin]        # dis_avb 的 gen_tos 算法 -> tos-noavb.bin')
+        print('  dis_avb.py gen_tos [--force-single] <tos.bin> [out.bin]  # gen_tos 算法 -> tos-noavb.bin')
         print('  dis_avb.py chsize <file.bin>                  # 截断 DHTB 到真实大小（原地）')
         print('  dis_avb.py fxxker <signed.bin> <mod.bin> <out> # bsp_sign_fxxker 包装')
-        print('  dis_avb.py dis_avb <sml_or_teecfg> <tos.bin> [out] # 完整 dis_avb 流程')
+        print('  dis_avb.py dis_avb [--force-single] <sml_or_teecfg> <tos.bin> [out] # 完整 dis_avb 流程')
+        print('')
+        print('  --force-single  只找到 1 个候选点时仍强制 patch（默认要求 >=2 个）')
         return 1
 
     cmd = sys.argv[1]
 
     if cmd == 'gen_tos':
-        data = loadfile(sys.argv[2])
-        out, pmov, patch_off = gen_tos_noavb(data)
-        out_path = sys.argv[3] if len(sys.argv) > 3 else 'tos-noavb.bin'
+        a = 2
+        force_single = False
+        if len(sys.argv) > a and sys.argv[a] == '--force-single':
+            force_single = True
+            a += 1
+        if len(sys.argv) <= a:
+            return 1
+        data = loadfile(sys.argv[a])
+        out, pmov, patch_off = gen_tos_noavb(data, force_single)
+        if patch_off is None:
+            return 1
+        out_path = sys.argv[a + 1] if len(sys.argv) > a + 1 else 'tos-noavb.bin'
         with open(out_path, 'wb') as f:
             f.write(out)
         print('saved to %s' % out_path)
@@ -396,14 +412,21 @@ def main():
         print('saved to %s' % sys.argv[4])
     elif cmd == 'dis_avb':
         # dis_avb_ex sml_or_teecfg tos -> tos-noavb-bsp-bypassed
-        sml = loadfile(sys.argv[2])
-        tos = loadfile(sys.argv[3])
-        tos_patched, _, patch_off = gen_tos_noavb(tos)
+        a = 2
+        force_single = False
+        if len(sys.argv) > a and sys.argv[a] == '--force-single':
+            force_single = True
+            a += 1
+        if len(sys.argv) <= a + 1:
+            return 1
+        sml = loadfile(sys.argv[a])
+        tos = loadfile(sys.argv[a + 1])
+        tos_patched, _, patch_off = gen_tos_noavb(tos, force_single)
         if patch_off is None:
             print('gen_tos failed: no patch target found')
             return 1
         out = bsp_sign_fxxker(sml, tos_patched)
-        out_path = sys.argv[4] if len(sys.argv) > 4 else 'tos-noavb-bsp-bypassed'
+        out_path = sys.argv[a + 2] if len(sys.argv) > a + 2 else 'tos-noavb-bsp-bypassed'
         with open(out_path, 'wb') as f:
             f.write(out)
         print('saved to %s (patched_off=0x%x, size=0x%x)' % (out_path, patch_off, len(out)))

@@ -155,7 +155,8 @@ static size_t chsize_old(const u8 *mem, size_t size)
 // gen_tos_noavb：trustos 的 mov patch（对应 gen_tos-noavb.c）
 // 输入完整 DHTB 镜像字节; 返回 (patch 后字节, patch 偏移或 -1)
 // ---------------------------------------------------------------------------
-static std::vector<u8> gen_tos_noavb(const std::vector<u8> &in, ssize_t *patch_off_out)
+static std::vector<u8> gen_tos_noavb(const std::vector<u8> &in, ssize_t *patch_off_out,
+                                     bool force_single = false)
 {
     if (in.size() < 4 || rd32(in.data()) != MAGIC_DHTB)
         err_exit("The file is not sprd trusted firmware\n");
@@ -220,6 +221,13 @@ static std::vector<u8> gen_tos_noavb(const std::vector<u8> &in, ssize_t *patch_o
     }
 
     if (mov_count < 2) {
+        if (force_single && mov_count == 1) {
+            printf("warning: only 1 candidate detected, forcing patch\n");
+            printf("patch mov at 0x%zx\n", pmov[0]);
+            wr32(mem.data() + pmov[0], MOV_W0_0);
+            if (patch_off_out) *patch_off_out = (ssize_t)pmov[0];
+            return mem;
+        }
         printf("dis_avb: skip saving!!!\n");
         if (patch_off_out) *patch_off_out = -1;
         return mem;
@@ -387,21 +395,30 @@ int main(int argc, char **argv)
     if (argc < 2) {
         fprintf(stderr,
             "usage:\n"
-            "  dis_avb gen_tos <tos.bin> [out.bin]            # gen_tos 算法 -> tos-noavb\n"
-            "  dis_avb chsize <file.bin>                       # 原地截断 DHTB(需要写 temp)\n"
-            "  dis_avb fxxker <signed.bin> <mod.bin> <out>     # bsp_sign_fxxker 包装\n"
-            "  dis_avb dis_avb <sml_or_teecfg> <tos.bin> [out] # 完整 dis_avb 流程\n"
-            "  dis_avb uboot <sml_or_teecfg> <uboot.bin> <out> # for_uboot 版本(含 patch_code)\n");
+            "  dis_avb gen_tos [--force-single] <tos.bin> [out.bin]            # gen_tos 算法 -> tos-noavb\n"
+            "  dis_avb chsize <file.bin>                                       # 原地截断 DHTB(需要写 temp)\n"
+            "  dis_avb fxxker <signed.bin> <mod.bin> <out>                     # bsp_sign_fxxker 包装\n"
+            "  dis_avb dis_avb [--force-single] <sml_or_teecfg> <tos.bin> [out] # 完整 dis_avb 流程\n"
+            "  dis_avb uboot <sml_or_teecfg> <uboot.bin> <out>                 # for_uboot 版本(含 patch_code)\n"
+            "\n"
+            "  --force-single  只找到 1 个候选点时仍强制 patch(默认要求 >=2 个)\n");
         return 1;
     }
     std::string cmd = argv[1];
 
     if (cmd == "gen_tos") {
-        if (argc < 3) return 1;
-        std::vector<u8> in = loadfile(argv[2]);
+        int a = 2;
+        bool force_single = false;
+        if (a < argc && std::string(argv[a]) == "--force-single") {
+            force_single = true;
+            a++;
+        }
+        if (a >= argc) return 1;
+        std::vector<u8> in = loadfile(argv[a]);
         ssize_t off = -1;
-        std::vector<u8> out = gen_tos_noavb(in, &off);
-        std::string o = (argc > 3) ? argv[3] : "tos-noavb.bin";
+        std::vector<u8> out = gen_tos_noavb(in, &off, force_single);
+        if (off < 0) return 1;
+        std::string o = (a + 1 < argc) ? argv[a + 1] : "tos-noavb.bin";
         savefile(o, out.data(), out.size());
         printf("saved to %s\n", o.c_str());
     } else if (cmd == "chsize") {
@@ -420,14 +437,20 @@ int main(int argc, char **argv)
         savefile(argv[4], out.data(), out.size());
         printf("saved to %s (0x%zx bytes)\n", argv[4], out.size());
     } else if (cmd == "dis_avb") {
-        if (argc < 4) return 1;
-        std::vector<u8> sml = loadfile(argv[2]);
-        std::vector<u8> tos = loadfile(argv[3]);
+        int a = 2;
+        bool force_single = false;
+        if (a < argc && std::string(argv[a]) == "--force-single") {
+            force_single = true;
+            a++;
+        }
+        if (a + 1 >= argc) return 1;
+        std::vector<u8> sml = loadfile(argv[a]);
+        std::vector<u8> tos = loadfile(argv[a + 1]);
         ssize_t off = -1;
-        std::vector<u8> tos_patched = gen_tos_noavb(tos, &off);
+        std::vector<u8> tos_patched = gen_tos_noavb(tos, &off, force_single);
         if (off < 0) return 1;
         std::vector<u8> out = bsp_sign_fxxker(sml, tos_patched, false);
-        std::string o = (argc > 4) ? argv[4] : "tos-noavb-bsp-bypassed";
+        std::string o = (a + 2 < argc) ? argv[a + 2] : "tos-noavb-bsp-bypassed";
         savefile(o, out.data(), out.size());
         printf("saved to %s (patched_off=0x%zx, size=0x%zx)\n", o.c_str(), off, out.size());
     } else if (cmd == "uboot") {
