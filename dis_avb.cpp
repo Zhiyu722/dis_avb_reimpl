@@ -12,7 +12,7 @@
 //   dis_avb gen_tos <tos.bin> [out.bin]          # gen_tos 算法 -> tos-noavb
 //   dis_avb chsize <file.bin>                     # 原地截断 DHTB
 //   dis_avb fxxker <signed.bin> <mod.bin> <out>   # bsp_sign_fxxker 包装
-//   dis_avb dis_avb <sml_or_teecfg> <tos.bin> [out]  # 完整 dis_avb 流程
+//   dis_avb dis_avb [--force-single] [--pad-to N|--pad-to-input] <sml_or_teecfg> <tos.bin> [out]  # 完整 dis_avb 流程
 //   dis_avb uboot <sml_or_teecfg> <uboot.bin> <out>   # for_uboot 版本(带 patch_code)
 
 #include <cstdint>
@@ -401,7 +401,9 @@ int main(int argc, char **argv)
             "  dis_avb dis_avb [--force-single] <sml_or_teecfg> <tos.bin> [out] # 完整 dis_avb 流程\n"
             "  dis_avb uboot <sml_or_teecfg> <uboot.bin> <out>                 # for_uboot 版本(含 patch_code)\n"
             "\n"
-            "  --force-single  只找到 1 个候选点时仍强制 patch(默认要求 >=2 个)\n");
+            "  --force-single  只找到 1 个候选点时仍强制 patch(默认要求 >=2 个)\n"
+            "  --pad-to <size>      输出用 0x00 补齐到指定大小(可用 0x 前缀)\n"
+            "  --pad-to-input       输出补齐到原始 tos.bin 的大小(分区全量镜像用)\n");
         return 1;
     }
     std::string cmd = argv[1];
@@ -439,17 +441,41 @@ int main(int argc, char **argv)
     } else if (cmd == "dis_avb") {
         int a = 2;
         bool force_single = false;
-        if (a < argc && std::string(argv[a]) == "--force-single") {
-            force_single = true;
-            a++;
+        bool pad_to_input = false;
+        size_t pad_to = 0;  // 0 = 不补齐
+        while (a < argc) {
+            std::string opt = argv[a];
+            if (opt == "--force-single") {
+                force_single = true;
+                a++;
+            } else if (opt == "--pad-to-input") {
+                pad_to_input = true;
+                a++;
+            } else if (opt == "--pad-to" && a + 1 < argc) {
+                char *endp = nullptr;
+                unsigned long long v = strtoull(argv[a + 1], &endp, 0);
+                if (!endp || *endp || v == 0)
+                    err_exit("invalid --pad-to value: %s\n", argv[a + 1]);
+                pad_to = (size_t)v;
+                a += 2;
+            } else {
+                break;
+            }
         }
         if (a + 1 >= argc) return 1;
         std::vector<u8> sml = loadfile(argv[a]);
         std::vector<u8> tos = loadfile(argv[a + 1]);
+        size_t tos_file_size = tos.size();
         ssize_t off = -1;
         std::vector<u8> tos_patched = gen_tos_noavb(tos, &off, force_single);
         if (off < 0) return 1;
         std::vector<u8> out = bsp_sign_fxxker(sml, tos_patched, false);
+        if (pad_to_input) pad_to = tos_file_size;
+        if (pad_to) {
+            if (pad_to < out.size())
+                err_exit("--pad-to 0x%zx is smaller than output 0x%zx\n", pad_to, out.size());
+            out.resize(pad_to, 0);
+        }
         std::string o = (a + 2 < argc) ? argv[a + 2] : "tos-noavb-bsp-bypassed";
         savefile(o, out.data(), out.size());
         printf("saved to %s (patched_off=0x%zx, size=0x%zx)\n", o.c_str(), off, out.size());

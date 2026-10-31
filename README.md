@@ -52,6 +52,11 @@ python3 dis_avb.py dis_avb <sml_or_teecfg.bin> <tos.bin> [输出文件]
 # 只有 1 个候选点时强制 patch（默认要求 >=2 个）
 python3 dis_avb.py dis_avb --force-single <sml_or_teecfg.bin> <tos.bin> [输出文件]
 
+# 输出补齐到原始 tos.bin 的大小（刷写工具要求分区全量镜像时用）
+python3 dis_avb.py dis_avb --force-single --pad-to-input <sml_or_teecfg.bin> <tos.bin> [输出文件]
+# 或补齐到指定大小（支持 0x 前缀）
+python3 dis_avb.py dis_avb --force-single --pad-to 0x600000 <sml_or_teecfg.bin> <tos.bin> [输出文件]
+
 # 单独步骤
 python3 dis_avb.py gen_tos [--force-single] <tos.bin> [输出] # ① → tos-noavb.bin
 python3 dis_avb.py chsize <文件.bin>              # ② 截断(原地)
@@ -66,6 +71,7 @@ python3 dis_avb.py fxxker <签名载体> <修改后> <out> # ③ 签名包装
 g++ -O2 -std=c++17 -o dis_avb dis_avb.cpp
 ./dis_avb dis_avb <sml_or_teecfg.bin> <tos.bin> [输出文件]
 ./dis_avb dis_avb --force-single <sml_or_teecfg.bin> <tos.bin> [输出文件]
+./dis_avb dis_avb --force-single --pad-to-input <sml_or_teecfg.bin> <tos.bin> [输出文件]
 # 子命令与 Python 一致: gen_tos / chsize / fxxker / dis_avb / uboot
 ```
 
@@ -138,5 +144,6 @@ fxxker:  py == ref OK / cpp == ref OK   (chsize 截断 0x3a0)
 
 - 上游 `gen_tos-noavb.c` 会**就地截断覆盖输入文件**；本实现默认不改动输入，输出到新文件。
 - 上游要求 `mov_count >= 2` 才选点；本实现默认保持一致，另提供 `--force-single`：仅当恰好命中 1 个候选点时强制 patch 该点（打印 `warning`），适用于只含一个校验函数的 trustos。
+- `dis_avb` 支持 `--pad-to <size>` / `--pad-to-input`：合并后的镜像默认只保留真实大小，若刷写工具要求与原分区等大（如 0x600000），用这两个选项在尾部补 `0x00`；补齐不影响 `mImgSize` 与 cert/payload 偏移，尾部区域原本也是全零。
 - `chsize_update_sha256` 的 SHA256 重算：Python 用 `hashlib.sha256`（等效）。
 - C++ 中 `loadfile` 的 extra 填充语义以上游为准做了近似（零填充 vs 未初始化堆数据），对 16 对齐的真实镜像无影响。

@@ -375,9 +375,11 @@ def main():
         print('  dis_avb.py gen_tos [--force-single] <tos.bin> [out.bin]  # gen_tos 算法 -> tos-noavb.bin')
         print('  dis_avb.py chsize <file.bin>                  # 截断 DHTB 到真实大小（原地）')
         print('  dis_avb.py fxxker <signed.bin> <mod.bin> <out> # bsp_sign_fxxker 包装')
-        print('  dis_avb.py dis_avb [--force-single] <sml_or_teecfg> <tos.bin> [out] # 完整 dis_avb 流程')
+        print('  dis_avb.py dis_avb [选项] <sml_or_teecfg> <tos.bin> [out] # 完整 dis_avb 流程')
         print('')
         print('  --force-single  只找到 1 个候选点时仍强制 patch（默认要求 >=2 个）')
+        print('  --pad-to <size> 输出用 0x00 补齐到指定大小（支持 0x 前缀）')
+        print('  --pad-to-input  输出补齐到原始 tos.bin 的大小（分区全量镜像用）')
         return 1
 
     cmd = sys.argv[1]
@@ -414,18 +416,41 @@ def main():
         # dis_avb_ex sml_or_teecfg tos -> tos-noavb-bsp-bypassed
         a = 2
         force_single = False
-        if len(sys.argv) > a and sys.argv[a] == '--force-single':
-            force_single = True
-            a += 1
+        pad_to_input = False
+        pad_to = 0
+        while a < len(sys.argv):
+            opt = sys.argv[a]
+            if opt == '--force-single':
+                force_single = True
+                a += 1
+            elif opt == '--pad-to-input':
+                pad_to_input = True
+                a += 1
+            elif opt == '--pad-to' and a + 1 < len(sys.argv):
+                pad_to = int(sys.argv[a + 1], 0)
+                if pad_to <= 0:
+                    print('invalid --pad-to value: %s' % sys.argv[a + 1])
+                    return 1
+                a += 2
+            else:
+                break
         if len(sys.argv) <= a + 1:
             return 1
         sml = loadfile(sys.argv[a])
         tos = loadfile(sys.argv[a + 1])
+        tos_file_size = len(tos)
         tos_patched, _, patch_off = gen_tos_noavb(tos, force_single)
         if patch_off is None:
             print('gen_tos failed: no patch target found')
             return 1
         out = bsp_sign_fxxker(sml, tos_patched)
+        if pad_to_input:
+            pad_to = tos_file_size
+        if pad_to:
+            if pad_to < len(out):
+                print('--pad-to 0x%x is smaller than output 0x%x' % (pad_to, len(out)))
+                return 1
+            out = out + b'\x00' * (pad_to - len(out))
         out_path = sys.argv[a + 2] if len(sys.argv) > a + 2 else 'tos-noavb-bsp-bypassed'
         with open(out_path, 'wb') as f:
             f.write(out)
